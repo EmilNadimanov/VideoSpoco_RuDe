@@ -1,0 +1,3 @@
+1) check_tiers.py to check whether tiers have empty information and whether paired tiers are of unequal lengths
+2) process_video.py to create subtitiles and chop videos into pieces
+3) make_vrt.py to make an xml-file with all the utterances in both languages and linuistic annotations.

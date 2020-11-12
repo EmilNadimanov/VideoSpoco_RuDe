@@ -1,0 +1,10 @@
+This tool cuts videos in accordance with time slots, which are set in an ELAN file. 
+It creates Subtitles directory and adds .ass files with subtitles there; Cuts down initial video into fragments and hardcodes the subtitiles into the picture based on data from an ELAN file.
+Files are named after the initial video with unique ID concatenated to it.
+
+	1) This scripts accepts either a pair of files (elan and a video) or two directories as arguments. They must be ordered ELAN first, Videos second
+	2) It creates subtitiles for ffmpeg to encode into the picture, and they should be .ass-formatted. The script creates .srt files, converts them to .ass and deletes all .srt files, leaving the .ass files we need. There are many of them, not one - that is a necessity: ffmpeg reads initial video from a position defined by option -ss without reading the whole stream of data that goes before that position, which makes the script work faster by magnitudes. However, such data is then viewed as if it started from the very beginning of a video - hence many .ass filed that all start from 00:00:00.000, but have unique names.
+	3) Then ffmpeg is used to cut initial video into fragments with subtitles. Unique names of .ass files help find the exact one and hardcode text into the picture. A directory "OUT" is created to store such fragments. Each fragment has a unique name as well: it is initial name + starting position in ms + ending position in ms + id, all divided by a dash. The initial extension is preserved to avoid loss of quality.
+	
+	4) If there are rows with unequal names, the script will raise an error. That is because one excess annotation(interval) in one tier of a pair will make captions in that language shift, leaving us with subtitiles, where phrases are not translations of one another.
+	5) If there are pairs where caption is not translated, it  will be saved and viewed as "None". To find such mistakes use check_tiers.py, to correct them use ELAN software.

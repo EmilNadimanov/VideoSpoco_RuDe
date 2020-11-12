@@ -1,0 +1,8 @@
+This script can be used to check whether all paired tiers are of the same length and do not contain "None" fields. If they do, a proper message will be printed to stdout.
+It only reads .eaf files and requires correct path to a directory with such files or directly to such files. Non-.eaf files will be ignored.
+
+Script only runs through tiers listed in a set at the top of the file.
+
+As an output it provides information about:
+    1) Empty annotations in the ELAN file paired with its translation and the time when these lines appear in the video.
+    2) Tiers which are either shorter or longer than their pair.
