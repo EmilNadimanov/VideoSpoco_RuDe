@@ -21,6 +21,11 @@ class ParseError(Exception):
 
 
 def extract_annotations(root):
+    """
+    Linguistic annotations are extracted based on the assumption that their names end with 'AA' or 'NVK'
+    Linguistic annotations are have type 'list'. They are the  values in a dictionary and are accessed by the name of a
+    tier without the '-AA'/' AA' or '-NVK'/' NVK' part. That means "Junge-NVK' is accessed by 'Junge'.
+    """
     result = dict()  # annotations
     for tier in [t for t in root.findall('TIER') if re.search(ANNOT_REGEX, t.get("TIER_ID")) is not None]:
         speaker = re.sub(ANNOT_REGEX, "", tier.get("TIER_ID"))
@@ -44,34 +49,57 @@ def extract_data(efile):
 
     tiers = [t for t in root.findall('TIER') if t.get("LINGUISTIC_TYPE_REF") in LINGUISTIC_TYPE_REF]
     ling_annotations = extract_annotations(root)
-    tier_number = 0  # each (2n)th tier is the translation of (2n-1)th tier (note that index [1] points to tier 2)
+    tier_number = 0
+
     while tier_number < len(tiers):  # a while-loop because we need to parse tiers in pairs
         tier1, tier2 = tiers[tier_number], tiers[tier_number + 1]
-        speaker = re.sub("-Spch", '', tier2.get("TIER_ID"))
-        try:
+
+        # An attempt to find a tier in German based on its name; Tiers are supposed to be ordered Russian first,
+        # German second. However, this variable assignment helps avoid mistakes
+        ru_tier, de_tier = (tier1, tier2) if re.search(r'[a-zA-Z]', tier2.get("TIER_ID")) is not None else (tier2, tier1)
+        speaker = re.sub("-Spch", '', de_tier.get("TIER_ID"))
+        print(speaker)
+        try:  # only few tiers have annotations
             annot_tiers = ling_annotations[speaker]
         except KeyError:
             annot_tiers = None
+        print(annot_tiers)
 
-        aa1, aa2 = tier1.findall('.//ALIGNABLE_ANNOTATION'), tier2.findall('.//ALIGNABLE_ANNOTATION')
-        if len(aa1) != len(aa2):
-            msg = ' '.join(["\nWarning! Tiers", tier1.get("TIER_ID"), "and", tier2.get("TIER_ID"),
-                            "have unequal lengths. Correct data before processing. "
-                            "Check ELAN file for blank annotations or other errors."])
-            raise ParseError(msg)
+        aa_ru_all, aa_de_all = ru_tier.findall('.//ALIGNABLE_ANNOTATION'), de_tier.findall('.//ALIGNABLE_ANNOTATION')
+        ru_idx, de_idx = 0, 0
+        while ru_idx < len(aa_ru_all):
+            aa_ru, aa_de = aa_ru_all[ru_idx], aa_de_all[de_idx]
+            start_ru = time_slots[aa_ru.get('TIME_SLOT_REF1')]
+            start_de = time_slots[aa_de.get('TIME_SLOT_REF1')]
 
-        for aa1, aa2 in zip(aa1, aa2):
-            start = time_slots[aa1.get('TIME_SLOT_REF1')]
-            text_ru = aa1.find("ANNOTATION_VALUE").text
-            text_de = aa2.find("ANNOTATION_VALUE").text
-            annot = ''
-            if annot_tiers is not None:  # only few tiers have annotations
-                annot = []
-                for annot_tier in annot_tiers:  # non-empty annotation fields that start ≈ when the speech interval does
-                    annot.extend([an.find("ANNOTATION_VALUE").text for an in annot_tier.findall('.//ALIGNABLE_ANNOTATION') if
-                             abs(int(time_slots[an.get('TIME_SLOT_REF1')]) - int(start)) < 100 and
+            # we pop empty intervals that have no pairs because they were added by mistake
+            if abs(int(start_ru) - int(start_de)) > 100:  # triggers if annotations are more than 100ms apart
+                if start_de < start_ru:  # lonely empty intervals appear earlier than valid ones
+                    aa_de_all.pop(de_idx)
+                else:
+                    aa_ru_all.pop(ru_idx)
+            else:
+                text_ru = aa_ru.find("ANNOTATION_VALUE").text
+                text_de = aa_de.find("ANNOTATION_VALUE").text
+                annot = ''
+                if annot_tiers is not None:
+                    annot = []
+                    for annot_tier in annot_tiers:  # Annotations start ≈ when the speech does
+                        annot.extend(
+                            [an.find("ANNOTATION_VALUE").text for an in annot_tier.findall('.//ALIGNABLE_ANNOTATION') if
+                             abs(int(time_slots[an.get('TIME_SLOT_REF1')]) - int(start_de)) < 100 and
                              an.find("ANNOTATION_VALUE").text is not None])
-            speech_slices.append([start, str(text_ru), str(text_de), 'own    '.join(annot)])
+                print('ANNOT:', annot, text_de)
+                speech_slices.append([start_ru, str(text_ru), str(text_de), ' '.join(annot)])
+                de_idx += 1
+                ru_idx += 1
+
+        # if len(aa_ru_all) != len(aa_de_all):
+        #     msg = ' '.join(["\nWarning! Tiers", tier1.get("TIER_ID"), "and", tier2.get("TIER_ID"),
+        #                     "have unequal lengths. Correct data before processing. "
+        #                     "Check ELAN file for blank annotations or other errors."])
+        #     raise ParseError(msg)
+
         tier_number += 2
 
     speech_slices.sort(key=(lambda x: x[0]))  # orders speech in the whole efile chronologically;

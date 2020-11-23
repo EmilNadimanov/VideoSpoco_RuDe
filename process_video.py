@@ -93,6 +93,7 @@ def cut_video(video_path, filename, slice_):
                                                                     extension, t, subtitles, cut_result)
     check_call(['/bin/sh', '-c', command + " -y -loglevel 24"])
 
+
 def extract_speech(efiles):
     """
     This function extracts speech from intervals and saves it, as well as its' translation, the time when the line is
@@ -120,26 +121,43 @@ def extract_speech(efiles):
                 time_slots[ts.get('TIME_SLOT_ID')] = int(ts.get('TIME_VALUE'))
 
         tiers = [t for t in root.findall('TIER') if t.get("LINGUISTIC_TYPE_REF") in LINGUISTIC_TYPE_REF]
-        tier_number = 0  # each (2n)th tier is the translation of (2n-1)th tier (note that index [1] points to tier 2)
+        tier_number = 0  # each (2k)th tier is the translation of (2k-1)th tier (note that index [1] points to tier 2)
 
         while tier_number < len(tiers):  # a while-loop because we need to parse tiers in pairs
             tier1, tier2 = tiers[tier_number], tiers[tier_number + 1]
 
-            aa1, aa2 = tier1.findall('.//ALIGNABLE_ANNOTATION'), tier2.findall('.//ALIGNABLE_ANNOTATION')
-            if len(aa1) != len(aa2):
-                msg = ' '.join(["\nWarning! Tiers", tier1.get("TIER_ID"), "and", tier2.get("TIER_ID"), "in", efile,
-                                "have unequal lengths. Correct data before processing. "
-                                "Check ELAN file for blank intervals or other errors."])
-                raise ParseError(msg)
+            # An attempt to find a tier in German based on its name; Tiers are supposed to be ordered Russian first,
+            # German second. However, this variable assignment helps avoid mistakes
+            ru_tier, de_tier = (tier2, tier1) if re.search(r'[a-zA-Z]', tier1.get("TIER_ID")) is not None else (
+                tier1, tier2)
 
-            for aa1, aa2 in zip(aa1, aa2):
-                start1 = time_slots[aa1.get('TIME_SLOT_REF1')]  # time values are supposed to be
-                end1 = time_slots[aa1.get('TIME_SLOT_REF2')]    # almost equal or equal for both tiers
+            aa_ru_all, aa_de_all = ru_tier.findall('.//ALIGNABLE_ANNOTATION'), de_tier.findall(
+                './/ALIGNABLE_ANNOTATION')
+            ru_idx, de_idx = 0, 0
+            while ru_idx < len(aa_ru_all):
+                aa_ru, aa_de = aa_ru_all[ru_idx], aa_de_all[de_idx]
+                start_ru = time_slots[aa_ru.get('TIME_SLOT_REF1')]
+                end_ru = time_slots[aa_ru.get('TIME_SLOT_REF2')]  # almost equal or equal for valid pairs
+                start_de = time_slots[aa_de.get('TIME_SLOT_REF1')]
 
-                text1 = aa1.find("ANNOTATION_VALUE").text  # text in language 1
-                text2 = aa2.find("ANNOTATION_VALUE").text  # text in language 2
-                speech_slices[filename].append([start1, end1, text1, text2])
+                # we pop empty intervals that have no pairs because they were added by mistake
+                if abs(int(start_ru) - int(start_de)) > 100:  # triggers if annotations are more than 10ms apart
+                    if int(start_de) < int(start_ru):  # empty intervals appear earlier than
+                        aa_de_all.pop(de_idx)
+                    else:
+                        aa_ru_all.pop(ru_idx)
+                else:
+                    text_ru = aa_ru.find("ANNOTATION_VALUE").text
+                    text_de = aa_de.find("ANNOTATION_VALUE").text
+                    speech_slices[filename].append([start_ru, end_ru, str(text_ru), str(text_de)])
+                    de_idx += 1
+                    ru_idx += 1
             tier_number += 2
+            # if len(aa_ru_all) != len(aa_de_all):
+            #     msg = ' '.join(["\nWarning! Tiers", tier1.get("TIER_ID"), "and", tier2.get("TIER_ID"), "in", efile,
+            #                     "have unequal lengths. Correct data before processing. "
+            #                     "Check ELAN file for blank intervals or other errors."])
+            #     raise ParseError(msg)
 
         speech_slices[filename].sort(key=(lambda x: x[1]))  # orders speech for the whole efile chronologically;
         for id_, list_ in enumerate(speech_slices[filename], start=1):
