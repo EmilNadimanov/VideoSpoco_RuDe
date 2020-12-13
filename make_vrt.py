@@ -7,7 +7,7 @@ import sys
 # Any questions about this code can be sent to nadimaemi@gmail.com
 # I may answer them. I may not.
 
-ANNOT_REGEX = r"[ -]NVK|[ -]AA$"
+ANNOT_REGEX = r"([ -]NVK|[ -]AA|[ -]Illok\.)$"
 LINGUISTIC_TYPE_REF = {"utterance"}
 OUT_PATH = "./VRT"
 
@@ -22,7 +22,9 @@ class ParseError(Exception):
 
 def extract_annotations(root):
     """
-    Linguistic annotations are extracted based on the assumption that their names end with 'AA' or 'NVK'
+    Linguistic annotations are extracted based on the assumption that their names end with special symbolic sequences.
+      For the files I initially have, those are "AA", "NVK", "Illok.". To add new ones alter the regular expression in
+      the ANNOT_REGEX global variable.
     Linguistic annotations are have type 'list'. They are the  values in a dictionary and are accessed by the name of a
     tier without the '-AA'/' AA' or '-NVK'/' NVK' part. That means "Junge-NVK' is accessed by 'Junge'.
     """
@@ -58,26 +60,26 @@ def extract_data(efile):
         # German second. However, this variable assignment helps avoid mistakes
         ru_tier, de_tier = (tier1, tier2) if re.search(r'[a-zA-Z]', tier2.get("TIER_ID")) is not None else (tier2, tier1)
         speaker = re.sub("-Spch", '', de_tier.get("TIER_ID"))
-        print(speaker)
         try:  # only few tiers have annotations
             annot_tiers = ling_annotations[speaker]
         except KeyError:
             annot_tiers = None
-        print(annot_tiers)
 
-        aa_ru_all, aa_de_all = ru_tier.findall('.//ALIGNABLE_ANNOTATION'), de_tier.findall('.//ALIGNABLE_ANNOTATION')
-        ru_idx, de_idx = 0, 0
-        while ru_idx < len(aa_ru_all):
-            aa_ru, aa_de = aa_ru_all[ru_idx], aa_de_all[de_idx]
+        aa_ru_all = ru_tier.findall('.//ALIGNABLE_ANNOTATION')
+        aa_de_all = de_tier.findall('.//ALIGNABLE_ANNOTATION')
+        idx = 0  # using index because we need to occasionally pop empty intervals from alignable annotations
+
+        while idx < min(len(aa_ru_all), len(aa_de_all)):
+            aa_ru, aa_de = aa_ru_all[idx], aa_de_all[idx]
             start_ru = time_slots[aa_ru.get('TIME_SLOT_REF1')]
             start_de = time_slots[aa_de.get('TIME_SLOT_REF1')]
 
             # we pop empty intervals that have no pairs because they were added by mistake
             if abs(int(start_ru) - int(start_de)) > 100:  # triggers if annotations are more than 100ms apart
                 if start_de < start_ru:  # lonely empty intervals appear earlier than valid ones
-                    aa_de_all.pop(de_idx)
+                    aa_de_all.pop(idx)
                 else:
-                    aa_ru_all.pop(ru_idx)
+                    aa_ru_all.pop(idx)
             else:
                 text_ru = aa_ru.find("ANNOTATION_VALUE").text
                 text_de = aa_de.find("ANNOTATION_VALUE").text
@@ -89,10 +91,8 @@ def extract_data(efile):
                             [an.find("ANNOTATION_VALUE").text for an in annot_tier.findall('.//ALIGNABLE_ANNOTATION') if
                              abs(int(time_slots[an.get('TIME_SLOT_REF1')]) - int(start_de)) < 100 and
                              an.find("ANNOTATION_VALUE").text is not None])
-                print('ANNOT:', annot, text_de)
                 speech_slices.append([start_ru, str(text_ru), str(text_de), ' '.join(annot)])
-                de_idx += 1
-                ru_idx += 1
+                idx += 1
 
         # if len(aa_ru_all) != len(aa_de_all):
         #     msg = ' '.join(["\nWarning! Tiers", tier1.get("TIER_ID"), "and", tier2.get("TIER_ID"),
@@ -146,7 +146,7 @@ def main():
             print("Location does not exist:", arg)
             continue
         elif os.path.isdir(arg):
-            efiles += [file.path for file in os.scandir(arg) if os.path.splitext(file.path)[1] == ".eaf"]
+            efiles = [file.path for file in os.scandir(arg) if os.path.splitext(file.path)[1] == ".eaf"]
         elif os.path.splitext(arg)[1] == ".eaf":
             efiles.append(arg)
     if not efiles:
@@ -157,7 +157,7 @@ def main():
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        raise ParseError("Provide the path to separate ELAN files or a directory as command line arguments")
+        raise ParseError("Provide the path(s) to separate ELAN file(s) or to a directory as command line arguments")
     print("Making .vrt for:")
     main()
 

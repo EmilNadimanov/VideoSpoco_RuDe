@@ -33,21 +33,24 @@ def check(efile):
         tier1, tier2 = tiers[tier_number], tiers[tier_number + 1]   # parsing tiers in pairs
 
         aa1, aa2 = tier1.findall('.//ALIGNABLE_ANNOTATION'), tier2.findall('.//ALIGNABLE_ANNOTATION')
-        if len(aa1) != len(aa2):  # paired tiers of unequal length
-            flawless = False
-            print("Warning!", efile, "has an error:\n", "\tTier", tier1.get("TIER_ID"), "has", len(aa1), "annotations.\n"
-                                                        "\tTier", tier2.get("TIER_ID"), "has", len(aa2), "annotations.\n",
-                  "Check ELAN file for blank intervals or other errors.")
 
         for aa1, aa2 in zip(aa1, aa2):
-            start, end = time_slots[aa1.get('TIME_SLOT_REF1')], time_slots[aa1.get('TIME_SLOT_REF2')]
-            start, end = dt.timedelta(milliseconds=start), dt.timedelta(milliseconds=end)
-            text1 = aa1.find("ANNOTATION_VALUE").text  # text in language 1
-            text2 = aa2.find("ANNOTATION_VALUE").text  # text in language 2
-            if text1 is None or text2 is None:  # no translation for one of the tiers
+            start1, end1 = time_slots[aa1.get('TIME_SLOT_REF1')], time_slots[aa1.get('TIME_SLOT_REF2')]
+            start2, end2 = time_slots[aa1.get('TIME_SLOT_REF1')], time_slots[aa1.get('TIME_SLOT_REF2')]
+            start1, end1 = dt.timedelta(milliseconds=start1), dt.timedelta(milliseconds=end1)
+            start2, end2 = dt.timedelta(milliseconds=start2), dt.timedelta(milliseconds=end2)
+            text1 = aa1.find("ANNOTATION_VALUE").text
+            text2 = aa2.find("ANNOTATION_VALUE").text
+            if text1 is None:  # no translation for one of the tiers
                 flawless = False
-                print("Empty field:", text1, " | ", text2, "| Located between", start, "and", end)
-
+                print("Speaker:", tier1.get("TIER_ID"),
+                      "\t Empty field:", text1, " | ", text2,
+                      "\t Located between", start1, "and", end1)
+            elif text2 is None:
+                flawless = False
+                print("Speaker:", tier2.get("TIER_ID"),
+                      "\t Empty field:", text1, " | ", text2,
+                      "\t Located between", start2, "and", end2)
         tier_number += 2
 
     if flawless:

@@ -48,11 +48,12 @@ def main(filename):
     """
     We need to reorder tiers with utterances in ELAN files to assure that corresponding tiers go in pairs and that
      German translations follow Russian text.
-    We have to separate four types of xml elements, which we then join together:
+    We have to separate four types of xml elements, which we then join together in the following order:
         1) The ones that go before tiers
-        2) The ones that go after tiers
-        3) The ones that are tiers with utterances(we reorder them). They come from the .csv metadata
+        3) The ones that are tiers with utterances(we reorder them). They come from the .csv metadata. We change their
+            LINGUISTIC_TYPE to "utterance" for future parsing.
         4) The ones that are tiers without utterances(we add them to the very end)
+        2) The ones that go after tiers
     """
     tree = et.parse(filename)
     root = tree.getroot()
@@ -72,6 +73,7 @@ def main(filename):
     root.extend(before_tiers + utterance_tiers + non_utterance_tiers + after_tiers)
     tree.write(argv[1], encoding='UTF-8', method='xml')
 
+    # native etree header makes ELAN freeze due to the way encoding is written
     with open(argv[1], mode='r+') as efile:
         content = efile.read()
         efile.seek(0, 0)

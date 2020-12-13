@@ -114,7 +114,7 @@ def extract_speech(efiles):
         print("\t", efile, sep='')
         speech_slices[filename] = list()
 
-        # ELAN files are represented as XML files and are parsed accordingly
+        # ELAN files are XML files and are parsed accordingly
         root = et.parse(efile).getroot()
         for ts in root.findall('.//TIME_ORDER/TIME_SLOT'):
             if ts.get('TIME_VALUE') is not None:
@@ -128,14 +128,15 @@ def extract_speech(efiles):
 
             # An attempt to find a tier in German based on its name; Tiers are supposed to be ordered Russian first,
             # German second. However, this variable assignment helps avoid mistakes
-            ru_tier, de_tier = (tier2, tier1) if re.search(r'[a-zA-Z]', tier1.get("TIER_ID")) is not None else (
-                tier1, tier2)
+            ru_tier, de_tier = (tier2, tier1) if re.search(r'[a-zA-Z]', tier1.get("TIER_ID")) is not None\
+                else (tier1, tier2)
 
-            aa_ru_all, aa_de_all = ru_tier.findall('.//ALIGNABLE_ANNOTATION'), de_tier.findall(
-                './/ALIGNABLE_ANNOTATION')
-            ru_idx, de_idx = 0, 0
-            while ru_idx < len(aa_ru_all):
-                aa_ru, aa_de = aa_ru_all[ru_idx], aa_de_all[de_idx]
+            aa_ru_all = ru_tier.findall('.//ALIGNABLE_ANNOTATION')
+            aa_de_all = de_tier.findall('.//ALIGNABLE_ANNOTATION')
+            idx = 0
+
+            while idx < min(len(aa_ru_all), len(aa_de_all)):
+                aa_ru, aa_de = aa_ru_all[idx], aa_de_all[idx]
                 start_ru = time_slots[aa_ru.get('TIME_SLOT_REF1')]
                 end_ru = time_slots[aa_ru.get('TIME_SLOT_REF2')]  # almost equal or equal for valid pairs
                 start_de = time_slots[aa_de.get('TIME_SLOT_REF1')]
@@ -143,15 +144,14 @@ def extract_speech(efiles):
                 # we pop empty intervals that have no pairs because they were added by mistake
                 if abs(int(start_ru) - int(start_de)) > 100:  # triggers if annotations are more than 10ms apart
                     if int(start_de) < int(start_ru):  # empty intervals appear earlier than
-                        aa_de_all.pop(de_idx)
+                        aa_de_all.pop(idx)
                     else:
-                        aa_ru_all.pop(ru_idx)
+                        aa_ru_all.pop(idx)
                 else:
                     text_ru = aa_ru.find("ANNOTATION_VALUE").text
                     text_de = aa_de.find("ANNOTATION_VALUE").text
                     speech_slices[filename].append([start_ru, end_ru, str(text_ru), str(text_de)])
-                    de_idx += 1
-                    ru_idx += 1
+                    idx += 1
             tier_number += 2
             # if len(aa_ru_all) != len(aa_de_all):
             #     msg = ' '.join(["\nWarning! Tiers", tier1.get("TIER_ID"), "and", tier2.get("TIER_ID"), "in", efile,
